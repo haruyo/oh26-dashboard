@@ -1,0 +1,70 @@
+{
+ "generated": "2026-07-05 08:42",
+ "jobs": [
+  {
+   "id": "keiri-kickoff",
+   "label": "経理キックオフ",
+   "schedule": "毎月1日 9:00"
+  },
+  {
+   "id": "monthly-reports",
+   "label": "月次レポート一括",
+   "schedule": "毎月3日 9:00"
+  },
+  {
+   "id": "zehn-weekly",
+   "label": "Zehn週次News下書き",
+   "schedule": "月曜 10:00"
+  },
+  {
+   "id": "roblox-weekly",
+   "label": "Roblox事業 週次",
+   "schedule": "月曜 11:00"
+  },
+  {
+   "id": "studio-weekly",
+   "label": "スタジオ運用レポート",
+   "schedule": "月曜 12:00"
+  },
+  {
+   "id": "ai-weekly",
+   "label": "AI事業 週次",
+   "schedule": "火曜 9:00"
+  },
+  {
+   "id": "minutes-to-wiki",
+   "label": "文字起こし→ナレッジ反映",
+   "schedule": "毎日 18:00"
+  }
+ ],
+ "links": [
+  {
+   "label": "IronPM（タスク管理）",
+   "url": "https://iron-pm.onrender.com"
+  },
+  {
+   "label": "スタジオ運用ダッシュボード",
+   "url": "https://github.com/ZehnStudio26/studio-ops-repo/blob/main/dashboard/talent-hub.html"
+  }
+ ],
+ "runs": [
+  {
+   "start": "2026-07-04T13:20:33",
+   "exit": 0,
+   "minutes": 0.0,
+   "job": "selftest"
+  },
+  {
+   "start": "2026-07-04T22:35:38",
+   "exit": 0,
+   "minutes": 0.0,
+   "job": "selftest"
+  },
+  {
+   "start": "2026-07-04T22:37:59",
+   "exit": 0,
+   "minutes": 0.0,
+   "job": "selftest"
+  }
+ ]
+}

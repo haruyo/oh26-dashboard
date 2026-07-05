@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>OH26 自動化ダッシュボード</title>
+<style>
+  :root {
+    --bg: #fafaf8; --fg: #1a1a1a; --muted: #6b6b6b; --line: #e3e1dc;
+    --card: #ffffff; --ok: #1a7f4b; --ng: #b3261e; --accent: #4a5568;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #16181d; --fg: #e8e6e3; --muted: #9a9891; --line: #32353c;
+            --card: #1e2128; --ok: #4cc38a; --ng: #ff8177; --accent: #a3b3cc; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 16px; background: var(--bg); color: var(--fg);
+         font-family: "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif; }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 1.25rem; margin: 0 0 4px; }
+  .gen { color: var(--muted); font-size: .8rem; margin-bottom: 20px; }
+  .links { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 24px; }
+  .links a { display: inline-block; padding: 8px 14px; border: 1px solid var(--line);
+             border-radius: 8px; background: var(--card); color: var(--fg);
+             text-decoration: none; font-size: .9rem; }
+  .links a:hover { border-color: var(--accent); }
+  .bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  select { padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
+           background: var(--card); color: var(--fg); font-size: .9rem; }
+  .tblwrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+  table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: .85rem; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: center; white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; }
+  tbody th { text-align: left; font-weight: 600; color: var(--fg); }
+  tbody tr:last-child th, tbody tr:last-child td { border-bottom: none; }
+  .sched { display: block; color: var(--muted); font-weight: 400; font-size: .75rem; }
+  .ok { color: var(--ok); } .ng { color: var(--ng); font-weight: 700; }
+  .dim { color: var(--muted); }
+  .today { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  .legend { color: var(--muted); font-size: .78rem; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>OH26 自動化ダッシュボード</h1>
+  <div class="gen" id="gen">読み込み中…</div>
+  <div class="links" id="links"></div>
+  <div class="bar">
+    <label for="week">表示週:</label>
+    <select id="week"></select>
+  </div>
+  <div class="tblwrap"><table id="grid"></table></div>
+  <div class="legend">✅ 成功 ／ ❌ 失敗（数字は所要分）／ ・ 実行なし。時刻はこのPCのローカル時刻。</div>
+</div>
+<script>
+const DAYS = ["月","火","水","木","金","土","日"];
+const pad = n => String(n).padStart(2, "0");
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+
+function mondayOf(d) {
+  const x = new Date(d); const dow = (x.getDay() + 6) % 7;
+  x.setDate(x.getDate() - dow); x.setHours(0,0,0,0); return x;
+}
+
+async function main() {
+  const data = await (await fetch("data.json?_=" + Date.now())).json();
+  document.getElementById("gen").textContent = "最終更新: " + data.generated;
+
+  const links = document.getElementById("links");
+  for (const l of data.links) {
+    const a = document.createElement("a");
+    a.href = l.url; a.textContent = l.label + " ↗"; a.target = "_blank"; a.rel = "noopener";
+    links.appendChild(a);
+  }
+
+  // 実行を 日付 -> job -> [runs] に整理
+  const byDay = {};
+  for (const r of data.runs) {
+    const day = r.start.slice(0, 10);
+    (byDay[day] ??= {});
+    (byDay[day][r.job] ??= []).push(r);
+  }
+
+  // 週リスト（今週から過去へ。最低6週）
+  const sel = document.getElementById("week");
+  const thisMon = mondayOf(new Date());
+  const weeks = [];
+  const oldest = data.runs.length ? mondayOf(new Date(data.runs[0].start)) : thisMon;
+  const minWeeks = 6;
+  for (let m = new Date(thisMon), i = 0; m >= oldest || i < minWeeks; m.setDate(m.getDate()-7), i++) {
+    weeks.push(new Date(m));
+    if (i > 26) break;
+  }
+  weeks.forEach((m, i) => {
+    const end = new Date(m); end.setDate(end.getDate()+6);
+    const o = document.createElement("option");
+    o.value = ymd(m);
+    o.textContent = `${ymd(m).slice(5).replace("-","/")} 〜 ${ymd(end).slice(5).replace("-","/")}` + (i===0 ? "（今週）" : "");
+    sel.appendChild(o);
+  });
+  sel.onchange = () => render(new Date(sel.value));
+  render(thisMon);
+
+  function render(mon) {
+    const grid = document.getElementById("grid");
+    const today = ymd(new Date());
+    const dates = [...Array(7)].map((_, i) => { const d = new Date(mon); d.setDate(d.getDate()+i); return d; });
+    let html = "<thead><tr><th>ジョブ</th>";
+    for (const [i, d] of dates.entries()) {
+      html += `<th class="${ymd(d)===today?"today":""}">${DAYS[i]}<br>${d.getMonth()+1}/${d.getDate()}</th>`;
+    }
+    html += "</tr></thead><tbody>";
+    for (const job of data.jobs) {
+      html += `<tr><th>${job.label}<span class="sched">${job.schedule}</span></th>`;
+      for (const d of dates) {
+        const runs = (byDay[ymd(d)] || {})[job.id] || [];
+        let cell = `<span class="dim">・</span>`;
+        if (runs.length) {
+          cell = runs.map(r => {
+            const t = r.start.slice(11, 16);
+            if (r.exit === 0) return `<span class="ok" title="${t} 開始 / ${r.minutes ?? "?"}分">✅</span>`;
+            if (r.exit === null) return `<span class="dim" title="${t} 開始">…</span>`;
+            return `<span class="ng" title="${t} 開始 / exit=${r.exit}">❌</span>`;
+          }).join(" ");
+        }
+        html += `<td class="${ymd(d)===today?"today":""}">${cell}</td>`;
+      }
+      html += "</tr>";
+    }
+    html += "</tbody>";
+    grid.innerHTML = html;
+  }
+}
+main().catch(e => document.getElementById("gen").textContent = "読み込みエラー: " + e);
+</script>
+</body>
+</html>

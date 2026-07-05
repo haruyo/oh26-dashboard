@@ -1,0 +1,16 @@
+{
+  "_comment": "ダッシュボードに表示するジョブ一覧（表示順）。公開ページのため顧客名・金額など機微情報は書かないこと",
+  "jobs": [
+    { "id": "keiri-kickoff",   "label": "経理キックオフ",             "schedule": "毎月1日 9:00" },
+    { "id": "monthly-reports", "label": "月次レポート一括",           "schedule": "毎月3日 9:00" },
+    { "id": "zehn-weekly",     "label": "Zehn週次News下書き",         "schedule": "月曜 10:00" },
+    { "id": "roblox-weekly",   "label": "Roblox事業 週次",            "schedule": "月曜 11:00" },
+    { "id": "studio-weekly",   "label": "スタジオ運用レポート",        "schedule": "月曜 12:00" },
+    { "id": "ai-weekly",       "label": "AI事業 週次",                "schedule": "火曜 9:00" },
+    { "id": "minutes-to-wiki", "label": "文字起こし→ナレッジ反映",     "schedule": "毎日 18:00" }
+  ],
+  "links": [
+    { "label": "IronPM（タスク管理）", "url": "https://iron-pm.onrender.com" },
+    { "label": "スタジオ運用ダッシュボード", "url": "https://github.com/ZehnStudio26/studio-ops-repo/blob/main/dashboard/talent-hub.html" }
+  ]
+}
