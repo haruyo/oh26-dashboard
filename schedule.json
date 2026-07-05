@@ -11,6 +11,6 @@
   ],
   "links": [
     { "label": "IronPM（タスク管理）", "url": "https://iron-pm.onrender.com" },
-    { "label": "スタジオ運用ダッシュボード", "url": "https://github.com/ZehnStudio26/studio-ops-repo/blob/main/dashboard/talent-hub.html" }
+    { "label": "スタジオ運用ダッシュボード", "url": "https://zehnstudio26.github.io/zehn-dashboard/" }
   ]
 }

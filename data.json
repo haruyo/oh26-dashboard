@@ -1,5 +1,5 @@
 {
- "generated": "2026-07-05 17:40",
+ "generated": "2026-07-05 17:41",
  "jobs": [
   {
    "id": "keiri-kickoff",
@@ -44,7 +44,7 @@
   },
   {
    "label": "スタジオ運用ダッシュボード",
-   "url": "https://github.com/ZehnStudio26/studio-ops-repo/blob/main/dashboard/talent-hub.html"
+   "url": "https://zehnstudio26.github.io/zehn-dashboard/"
   }
  ],
  "runs": [
