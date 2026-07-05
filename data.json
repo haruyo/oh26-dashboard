@@ -1,5 +1,5 @@
 {
- "generated": "2026-07-05 18:00",
+ "generated": "2026-07-05 18:10",
  "jobs": [
   {
    "id": "keiri-kickoff",
@@ -102,6 +102,12 @@
   },
   {
    "start": "2026-07-05T18:00:01",
+   "exit": 0,
+   "minutes": 0.5,
+   "job": "inbox-cycle"
+  },
+  {
+   "start": "2026-07-05T18:10:02",
    "exit": 0,
    "minutes": 0.5,
    "job": "inbox-cycle"
