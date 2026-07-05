@@ -1,5 +1,5 @@
 {
- "generated": "2026-07-05 17:50",
+ "generated": "2026-07-05 17:52",
  "jobs": [
   {
    "id": "keiri-kickoff",
@@ -45,6 +45,10 @@
   {
    "label": "スタジオ運用ダッシュボード",
    "url": "https://zehnstudio26.github.io/zehn-dashboard/"
+  },
+  {
+   "label": "Handleループ（週次オーガニック）",
+   "url": "https://docs.google.com/spreadsheets/d/1nwEVuPoILDxXRwHimsOFwMnhuNwWKhLn98lugJwh6UA/edit?gid=1704484867#gid=1704484867"
   }
  ],
  "runs": [

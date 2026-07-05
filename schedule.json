@@ -11,6 +11,7 @@
   ],
   "links": [
     { "label": "IronPM（タスク管理）", "url": "https://iron-pm.onrender.com" },
-    { "label": "スタジオ運用ダッシュボード", "url": "https://zehnstudio26.github.io/zehn-dashboard/" }
+    { "label": "スタジオ運用ダッシュボード", "url": "https://zehnstudio26.github.io/zehn-dashboard/" },
+    { "label": "Handleループ（週次オーガニック）", "url": "https://docs.google.com/spreadsheets/d/1nwEVuPoILDxXRwHimsOFwMnhuNwWKhLn98lugJwh6UA/edit?gid=1704484867#gid=1704484867" }
   ]
 }
