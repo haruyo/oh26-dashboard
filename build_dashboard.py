@@ -1,13 +1,16 @@
-"""schedulerのログを走査して data.json を生成する
+"""schedulerのログを走査して data.enc.json（暗号化済み）を生成する
 
 実行: python build_dashboard.py
 入力: E:\\2026ALL\\scheduler\\logs\\<ジョブ名>\\YYYY-MM-DD_HHMMSS.log
-出力: このフォルダの data.json（index.html が fetch する）
+出力: data.enc.json（AES-GCM暗号化。index.html がパスワードで復号）
+      data.json（平文・ローカル確認用。gitignore対象＝公開されない）
 
-公開ページのため、ログの中身（本文）は一切載せない。載せるのは
-ジョブ名・実行時刻・成否(exit)・所要分数のみ。
+パスワードは .password ファイル（gitignore対象）。変更したら再ビルドで反映。
 """
+import base64
+import hashlib
 import json
+import os
 import re
 import sys
 from datetime import datetime, timedelta
@@ -16,6 +19,7 @@ from pathlib import Path
 BASE = Path(__file__).parent
 LOGS = Path(r"E:\2026ALL\scheduler\logs")
 KEEP_DAYS = 60
+PBKDF2_ITER = 200_000
 
 FOOTER_RE = re.compile(r"終了 .* \(exit=(-?\d+), ([\d.]+)分\)")
 
@@ -72,10 +76,26 @@ def main() -> int:
         "links": schedule["links"],
         "runs": runs,
     }
-    (BASE / "data.json").write_text(
-        json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8"
-    )
-    print(f"data.json 更新: {len(runs)} runs")
+    plain = json.dumps(data, ensure_ascii=False, indent=1)
+    (BASE / "data.json").write_text(plain, encoding="utf-8")  # ローカル確認用（非公開）
+
+    # --- 暗号化して公開用 data.enc.json を生成 ---
+    password = (BASE / ".password").read_text(encoding="utf-8-sig").strip()
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    salt = os.urandom(16)
+    iv = os.urandom(12)
+    key = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, PBKDF2_ITER, dklen=32)
+    ciphertext = AESGCM(key).encrypt(iv, plain.encode("utf-8"), None)
+    enc = {
+        "v": 1,
+        "kdf": "PBKDF2-SHA256",
+        "iter": PBKDF2_ITER,
+        "salt": base64.b64encode(salt).decode(),
+        "iv": base64.b64encode(iv).decode(),
+        "data": base64.b64encode(ciphertext).decode(),
+    }
+    (BASE / "data.enc.json").write_text(json.dumps(enc), encoding="utf-8")
+    print(f"data.enc.json 更新: {len(runs)} runs（暗号化済み）")
     return 0
 
 

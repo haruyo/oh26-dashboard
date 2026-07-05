@@ -26,8 +26,10 @@
              text-decoration: none; font-size: .9rem; }
   .links a:hover { border-color: var(--accent); }
   .bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-  select { padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
-           background: var(--card); color: var(--fg); font-size: .9rem; }
+  select, input[type=password] { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+           background: var(--card); color: var(--fg); font-size: .95rem; }
+  button { padding: 8px 18px; border: 1px solid var(--accent); border-radius: 8px;
+           background: var(--accent); color: #fff; font-size: .95rem; cursor: pointer; }
   .tblwrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
   table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: .85rem; }
   th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: center; white-space: nowrap; }
@@ -39,42 +41,78 @@
   .dim { color: var(--muted); }
   .today { background: color-mix(in srgb, var(--accent) 8%, transparent); }
   .legend { color: var(--muted); font-size: .78rem; margin-top: 10px; }
+  #gate { max-width: 380px; margin: 15vh auto 0; text-align: center; }
+  #gate .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 28px 24px; }
+  #gate input { width: 100%; margin: 14px 0; }
+  #gateErr { color: var(--ng); font-size: .85rem; min-height: 1.2em; }
+  #app { display: none; }
 </style>
 </head>
 <body>
-<div class="wrap">
+<div id="gate">
+  <div class="card">
+    <h1>🔒 OH26 ダッシュボード</h1>
+    <p class="gen">パスワードを入力してください</p>
+    <form id="gateForm">
+      <input type="password" id="pw" autocomplete="current-password" autofocus>
+      <div id="gateErr"></div>
+      <button type="submit">開く</button>
+    </form>
+  </div>
+</div>
+
+<div class="wrap" id="app">
   <h1>OH26 自動化ダッシュボード</h1>
-  <div class="gen" id="gen">読み込み中…</div>
+  <div class="gen" id="gen"></div>
   <div class="links" id="links"></div>
   <div class="bar">
     <label for="week">表示週:</label>
     <select id="week"></select>
   </div>
   <div class="tblwrap"><table id="grid"></table></div>
-  <div class="legend">✅ 成功 ／ ❌ 失敗（数字は所要分）／ ・ 実行なし。時刻はこのPCのローカル時刻。</div>
+  <div class="legend">✅ 成功 ／ ❌ 失敗（ホバーで時刻・所要分）／ ・ 実行なし。時刻はPCのローカル時刻。</div>
 </div>
 <script>
 const DAYS = ["月","火","水","木","金","土","日"];
 const pad = n => String(n).padStart(2, "0");
 const ymd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 
 function mondayOf(d) {
   const x = new Date(d); const dow = (x.getDay() + 6) % 7;
   x.setDate(x.getDate() - dow); x.setHours(0,0,0,0); return x;
 }
 
-async function main() {
-  const data = await (await fetch("data.json?_=" + Date.now())).json();
-  document.getElementById("gen").textContent = "最終更新: " + data.generated;
+async function decrypt(enc, password) {
+  const baseKey = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveKey"]);
+  const key = await crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt: b64(enc.salt), iterations: enc.iter, hash: "SHA-256" },
+    baseKey, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+  const plain = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: b64(enc.iv) }, key, b64(enc.data));
+  return JSON.parse(new TextDecoder().decode(plain));
+}
 
+async function tryOpen(password) {
+  const enc = await (await fetch("data.enc.json?_=" + Date.now())).json();
+  const data = await decrypt(enc, password);   // 失敗すると例外
+  localStorage.setItem("oh26pw", password);
+  document.getElementById("gate").style.display = "none";
+  document.getElementById("app").style.display = "block";
+  render(data);
+}
+
+function render(data) {
+  document.getElementById("gen").textContent = "最終更新: " + data.generated;
   const links = document.getElementById("links");
+  links.innerHTML = "";
   for (const l of data.links) {
     const a = document.createElement("a");
     a.href = l.url; a.textContent = l.label + " ↗"; a.target = "_blank"; a.rel = "noopener";
     links.appendChild(a);
   }
 
-  // 実行を 日付 -> job -> [runs] に整理
   const byDay = {};
   for (const r of data.runs) {
     const day = r.start.slice(0, 10);
@@ -82,13 +120,12 @@ async function main() {
     (byDay[day][r.job] ??= []).push(r);
   }
 
-  // 週リスト（今週から過去へ。最低6週）
   const sel = document.getElementById("week");
+  sel.innerHTML = "";
   const thisMon = mondayOf(new Date());
   const weeks = [];
   const oldest = data.runs.length ? mondayOf(new Date(data.runs[0].start)) : thisMon;
-  const minWeeks = 6;
-  for (let m = new Date(thisMon), i = 0; m >= oldest || i < minWeeks; m.setDate(m.getDate()-7), i++) {
+  for (let m = new Date(thisMon), i = 0; m >= oldest || i < 6; m.setDate(m.getDate()-7), i++) {
     weeks.push(new Date(m));
     if (i > 26) break;
   }
@@ -99,40 +136,52 @@ async function main() {
     o.textContent = `${ymd(m).slice(5).replace("-","/")} 〜 ${ymd(end).slice(5).replace("-","/")}` + (i===0 ? "（今週）" : "");
     sel.appendChild(o);
   });
-  sel.onchange = () => render(new Date(sel.value));
-  render(thisMon);
-
-  function render(mon) {
-    const grid = document.getElementById("grid");
-    const today = ymd(new Date());
-    const dates = [...Array(7)].map((_, i) => { const d = new Date(mon); d.setDate(d.getDate()+i); return d; });
-    let html = "<thead><tr><th>ジョブ</th>";
-    for (const [i, d] of dates.entries()) {
-      html += `<th class="${ymd(d)===today?"today":""}">${DAYS[i]}<br>${d.getMonth()+1}/${d.getDate()}</th>`;
-    }
-    html += "</tr></thead><tbody>";
-    for (const job of data.jobs) {
-      html += `<tr><th>${job.label}<span class="sched">${job.schedule}</span></th>`;
-      for (const d of dates) {
-        const runs = (byDay[ymd(d)] || {})[job.id] || [];
-        let cell = `<span class="dim">・</span>`;
-        if (runs.length) {
-          cell = runs.map(r => {
-            const t = r.start.slice(11, 16);
-            if (r.exit === 0) return `<span class="ok" title="${t} 開始 / ${r.minutes ?? "?"}分">✅</span>`;
-            if (r.exit === null) return `<span class="dim" title="${t} 開始">…</span>`;
-            return `<span class="ng" title="${t} 開始 / exit=${r.exit}">❌</span>`;
-          }).join(" ");
-        }
-        html += `<td class="${ymd(d)===today?"today":""}">${cell}</td>`;
-      }
-      html += "</tr>";
-    }
-    html += "</tbody>";
-    grid.innerHTML = html;
-  }
+  sel.onchange = () => renderGrid(new Date(sel.value), data, byDay);
+  renderGrid(thisMon, data, byDay);
 }
-main().catch(e => document.getElementById("gen").textContent = "読み込みエラー: " + e);
+
+function renderGrid(mon, data, byDay) {
+  const grid = document.getElementById("grid");
+  const today = ymd(new Date());
+  const dates = [...Array(7)].map((_, i) => { const d = new Date(mon); d.setDate(d.getDate()+i); return d; });
+  let html = "<thead><tr><th>ジョブ</th>";
+  for (const [i, d] of dates.entries()) {
+    html += `<th class="${ymd(d)===today?"today":""}">${DAYS[i]}<br>${d.getMonth()+1}/${d.getDate()}</th>`;
+  }
+  html += "</tr></thead><tbody>";
+  for (const job of data.jobs) {
+    html += `<tr><th>${job.label}<span class="sched">${job.schedule}</span></th>`;
+    for (const d of dates) {
+      const runs = (byDay[ymd(d)] || {})[job.id] || [];
+      let cell = `<span class="dim">・</span>`;
+      if (runs.length) {
+        const okCount = runs.filter(r => r.exit === 0).length;
+        const ngCount = runs.filter(r => r.exit !== 0 && r.exit !== null).length;
+        const parts = [];
+        if (okCount) parts.push(`<span class="ok" title="${okCount}回成功">✅${okCount > 1 ? "×" + okCount : ""}</span>`);
+        if (ngCount) parts.push(`<span class="ng" title="${ngCount}回失敗">❌${ngCount > 1 ? "×" + ngCount : ""}</span>`);
+        cell = parts.join(" ") || cell;
+      }
+      html += `<td class="${ymd(d)===today?"today":""}">${cell}</td>`;
+    }
+    html += "</tr>";
+  }
+  html += "</tbody>";
+  grid.innerHTML = html;
+}
+
+document.getElementById("gateForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const pw = document.getElementById("pw").value;
+  try { await tryOpen(pw); }
+  catch { document.getElementById("gateErr").textContent = "パスワードが違います"; }
+});
+
+// 保存済みパスワードで自動オープン
+const saved = localStorage.getItem("oh26pw");
+if (saved) {
+  tryOpen(saved).catch(() => { localStorage.removeItem("oh26pw"); });
+}
 </script>
 </body>
 </html>
