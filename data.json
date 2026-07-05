@@ -102,8 +102,8 @@
   },
   {
    "start": "2026-07-05T18:00:01",
-   "exit": null,
-   "minutes": null,
+   "exit": 0,
+   "minutes": 0.5,
    "job": "inbox-cycle"
   }
  ]
