@@ -23,6 +23,38 @@ PBKDF2_ITER = 200_000
 
 FOOTER_RE = re.compile(r"終了 .* \(exit=(-?\d+), ([\d.]+)分\)")
 
+# scheduler/logs の外で動く（別スクリプト・別フォーマットの）ジョブ。
+# job_id -> (ログフォルダ, ファイル名の日時正規表現)。時:分が取れなければ 00:00 扱い。
+EXTRA_LOG_DIRS = {
+    "handle-loop": (
+        Path(r"C:\Users\be\Dropbox\works\H_Handle\260408monthly-report\weekly_loop\logs"),
+        re.compile(r"run-(\d{4}-\d{2}-\d{2})_(\d{2})(\d{2})"),
+    ),
+    "handle-monitor": (
+        Path(r"C:\Users\be\Desktop\handle-260502\logs"),
+        re.compile(r"weekly_(\d{4}-\d{2}-\d{2})"),
+    ),
+}
+# 明らかなクラッシュだけ失敗扱い（外部ログには exit フッターが無いため）
+CRASH_RE = re.compile(r"Traceback \(most recent call last\)|FATAL|Unhandled exception")
+
+
+def parse_external_log(path: Path, date_re: re.Pattern) -> dict | None:
+    m = date_re.search(path.name)
+    if not m:
+        return None
+    hh = m.group(2) if m.lastindex and m.lastindex >= 2 else "00"
+    mm = m.group(3) if m.lastindex and m.lastindex >= 3 else "00"
+    start = f"{m.group(1)}T{hh}:{mm}:00"
+    exit_code = 0  # 外部ジョブは「ログが残った＝実行された」を成功とみなす
+    try:
+        body = path.read_text(encoding="utf-8-sig", errors="replace")
+        if CRASH_RE.search(body):
+            exit_code = 1
+    except OSError:
+        pass
+    return {"start": start, "exit": exit_code, "minutes": None}
+
 
 def parse_log(path: Path) -> dict | None:
     m = re.match(r"(\d{4}-\d{2}-\d{2})_(\d{2})(\d{2})(\d{2})", path.stem)
@@ -52,6 +84,12 @@ def main() -> int:
     schedule = json.loads((BASE / "schedule.json").read_text(encoding="utf-8-sig"))
     cutoff = datetime.now() - timedelta(days=KEEP_DAYS)
 
+    def keep(r) -> bool:
+        try:
+            return datetime.fromisoformat(r["start"]) >= cutoff
+        except ValueError:
+            return False
+
     runs = []
     if LOGS.exists():
         for job_dir in LOGS.iterdir():
@@ -59,20 +97,27 @@ def main() -> int:
                 continue
             for log in job_dir.glob("*.log"):
                 r = parse_log(log)
-                if not r:
-                    continue
-                try:
-                    if datetime.fromisoformat(r["start"]) < cutoff:
-                        continue
-                except ValueError:
+                if not r or not keep(r):
                     continue
                 r["job"] = job_dir.name
                 runs.append(r)
+
+    # scheduler の外で動くジョブ（Handle系）も拾う
+    for job_id, (log_dir, date_re) in EXTRA_LOG_DIRS.items():
+        if not log_dir.exists():
+            continue
+        for log in log_dir.glob("*.log"):
+            r = parse_external_log(log, date_re)
+            if not r or not keep(r):
+                continue
+            r["job"] = job_id
+            runs.append(r)
 
     runs.sort(key=lambda r: r["start"])
     data = {
         "generated": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "jobs": schedule["jobs"],
+        "resident": schedule.get("resident", []),
         "links": schedule["links"],
         "runs": runs,
     }

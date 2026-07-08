@@ -1,13 +1,24 @@
 {
-  "_comment": "ダッシュボードに表示するジョブ一覧（表示順）。公開ページのため顧客名・金額など機微情報は書かないこと",
+  "_comment": "ダッシュボードに表示するジョブ一覧（表示順）。公開ページのため顧客名・金額など機微情報は書かないこと。id は scheduler/logs 配下のフォルダ名（=run-job.ps1のJobName）と一致させること。外部ログのジョブ(handle-*)は build_dashboard.py の EXTRA_LOG_DIRS で拾う",
   "jobs": [
-    { "id": "keiri-kickoff",   "label": "経理キックオフ",             "schedule": "毎月1日 9:00" },
-    { "id": "monthly-reports", "label": "月次レポート一括",           "schedule": "毎月3日 9:00" },
-    { "id": "zehn-weekly",     "label": "Zehn週次News下書き",         "schedule": "月曜 10:00" },
-    { "id": "roblox-weekly",   "label": "Roblox事業 週次",            "schedule": "月曜 11:00" },
+    { "id": "meet-local",      "label": "打ち合わせ録画→タスク化",     "schedule": "30分毎（新着検知）" },
+    { "id": "inbox-cycle",     "label": "統一受信箱（収集・仕分け・下書き）", "schedule": "10分毎" },
+    { "id": "daily-brief",     "label": "デイリーブリーフ",           "schedule": "毎日 8:00" },
+    { "id": "wp-reminder",     "label": "WP更新リマインダー",          "schedule": "毎日 9:00（10日前判定）" },
+    { "id": "minutes-to-wiki", "label": "文字起こし→ナレッジ反映",     "schedule": "毎日 18:00" },
+    { "id": "handle-monitor",  "label": "Handle競合モニター",         "schedule": "月曜 9:00" },
+    { "id": "zehn-seo-loop",   "label": "Zehn SEOループ",            "schedule": "月曜 9:00" },
+    { "id": "zehn-weekly",     "label": "Zehn週次News",             "schedule": "月曜 10:00" },
+    { "id": "handle-loop",     "label": "Handleサイト改善ループ",      "schedule": "月曜 10:12" },
+    { "id": "roblox-weekly",   "label": "Roblox事業 週次",           "schedule": "月曜 11:00" },
     { "id": "studio-weekly",   "label": "スタジオ運用レポート",        "schedule": "月曜 12:00" },
-    { "id": "ai-weekly",       "label": "AI事業 週次",                "schedule": "火曜 9:00" },
-    { "id": "minutes-to-wiki", "label": "文字起こし→ナレッジ反映",     "schedule": "毎日 18:00" }
+    { "id": "ai-weekly",       "label": "AI事業 週次",               "schedule": "火曜 9:00" },
+    { "id": "youtube-live",    "label": "YouTubeライブ動画処理",      "schedule": "木曜 9〜15時" },
+    { "id": "keiri-kickoff",   "label": "経理キックオフ",             "schedule": "毎月1日 9:00" },
+    { "id": "monthly-reports", "label": "月次レポート一括（7社）",      "schedule": "毎月3日 9:00" }
+  ],
+  "resident": [
+    { "id": "discord-bridge",  "label": "Discord⇔Claudeブリッジ",    "note": "ログオン時に起動・常駐" }
   ],
   "links": [
     { "label": "IronPM（タスク管理）", "url": "https://iron-pm.onrender.com" },

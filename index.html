@@ -41,6 +41,11 @@
   .dim { color: var(--muted); }
   .today { background: color-mix(in srgb, var(--accent) 8%, transparent); }
   .legend { color: var(--muted); font-size: .78rem; margin-top: 10px; }
+  #resident { margin-top: 18px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  #resident .rlabel { color: var(--muted); font-size: .82rem; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border: 1px solid var(--line);
+          border-radius: 999px; background: var(--card); font-size: .82rem; }
+  .chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
   #gate { max-width: 380px; margin: 15vh auto 0; text-align: center; }
   #gate .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 28px 24px; }
   #gate input { width: 100%; margin: 14px 0; }
@@ -71,6 +76,7 @@
   </div>
   <div class="tblwrap"><table id="grid"></table></div>
   <div class="legend">✅ 成功 ／ ❌ 失敗（ホバーで時刻・所要分）／ ・ 実行なし。時刻はPCのローカル時刻。</div>
+  <div id="resident"></div>
 </div>
 <script>
 const DAYS = ["月","火","水","木","金","土","日"];
@@ -138,6 +144,16 @@ function render(data) {
   });
   sel.onchange = () => renderGrid(new Date(sel.value), data, byDay);
   renderGrid(thisMon, data, byDay);
+
+  const res = document.getElementById("resident");
+  const residents = data.resident || [];
+  if (residents.length) {
+    res.innerHTML = `<span class="rlabel">常時稼働:</span>` + residents.map(r =>
+      `<span class="chip"><span class="dot"></span>${r.label}${r.note ? `<span class="dim">（${r.note}）</span>` : ""}</span>`
+    ).join("");
+  } else {
+    res.innerHTML = "";
+  }
 }
 
 function renderGrid(mon, data, byDay) {
