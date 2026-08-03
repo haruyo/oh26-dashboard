@@ -6,7 +6,7 @@
     { "id": "daily-brief",     "label": "デイリーブリーフ",           "schedule": "毎日 8:00" },
     { "id": "wp-reminder",     "label": "WP更新リマインダー",          "schedule": "毎日 9:00（10日前判定）" },
     { "id": "minutes-to-wiki", "label": "文字起こし→ナレッジ反映",     "schedule": "毎日 18:00" },
-    { "id": "area51-approve",  "label": "Area51 承認スタンプ取込",     "schedule": "5分毎" },
+    { "id": "area51-approve",  "label": "Area51 承認スタンプ取込",     "schedule": "10分毎" },
     { "id": "area51-feedback", "label": "Area51 投稿取込・要約",       "schedule": "10分毎" },
     { "id": "area51-flash",    "label": "Area51 離脱速報",            "schedule": "12/14/16/18/20時" },
     { "id": "handle-monitor",  "label": "Handle競合モニター",         "schedule": "月曜 9:00" },
@@ -35,7 +35,7 @@
       "check": {
         "type": "log",
         "jobs": [
-          { "job": "area51-approve",  "short": "承認取込", "stale_minutes": 20 },
+          { "job": "area51-approve",  "short": "承認取込", "stale_minutes": 35 },
           { "job": "area51-feedback", "short": "投稿取込", "stale_minutes": 35 }
         ]
       }
