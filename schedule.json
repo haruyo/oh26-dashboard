@@ -4,97 +4,116 @@
     {
       "id": "meet-local",
       "label": "打ち合わせ録画→タスク化",
-      "schedule": "30分毎（新着検知）"
+      "schedule": "30分毎（新着検知）",
+      "stale_hours": 2
     },
     {
       "id": "inbox-cycle",
       "label": "統一受信箱（収集・仕分け・下書き）",
-      "schedule": "10分毎"
+      "schedule": "10分毎",
+      "stale_hours": 1
     },
     {
       "id": "bridge-watchdog",
       "label": "Discordブリッジ死活監視",
-      "schedule": "10分毎（落ちていたら自動再起動）"
+      "schedule": "10分毎（落ちていたら自動再起動）",
+      "stale_hours": 1
     },
     {
       "id": "daily-brief",
       "label": "デイリーブリーフ",
-      "schedule": "毎日 8:00"
+      "schedule": "毎日 8:00",
+      "stale_hours": 26
     },
     {
       "id": "wp-reminder",
       "label": "WP更新リマインダー",
-      "schedule": "毎日 9:00（10日前判定）"
+      "schedule": "毎日 9:00（10日前判定）",
+      "stale_hours": 26
     },
     {
       "id": "minutes-to-wiki",
       "label": "文字起こし→ナレッジ反映",
-      "schedule": "毎日 18:00"
+      "schedule": "毎日 18:00",
+      "stale_hours": 26
     },
     {
       "id": "area51-approve",
       "label": "Area51 承認スタンプ取込",
-      "schedule": "10分毎"
+      "schedule": "10分毎",
+      "stale_hours": 2
     },
     {
       "id": "area51-feedback",
       "label": "Area51 投稿取込・要約",
-      "schedule": "10分毎"
+      "schedule": "10分毎",
+      "stale_hours": 2
     },
     {
       "id": "area51-flash",
       "label": "Area51 離脱速報",
-      "schedule": "12/14/16/18/20時"
+      "schedule": "12/14/16/18/20時",
+      "stale_hours": 26
     },
     {
       "id": "handle-monitor",
       "label": "Handle競合モニター",
-      "schedule": "月曜 9:00"
+      "schedule": "月曜 9:00",
+      "stale_hours": 192
     },
     {
       "id": "zehn-seo-loop",
       "label": "Zehn SEOループ",
-      "schedule": "月曜 9:00"
+      "schedule": "月曜 9:00",
+      "stale_hours": 192
     },
     {
       "id": "zehn-weekly",
       "label": "Zehn週次News",
-      "schedule": "月曜 10:00"
+      "schedule": "月曜 10:00",
+      "stale_hours": 192
     },
     {
       "id": "handle-loop",
       "label": "Handleサイト改善ループ",
-      "schedule": "月曜 10:12"
+      "schedule": "月曜 10:12",
+      "stale_hours": 192
     },
     {
       "id": "roblox-weekly",
       "label": "Roblox事業 週次",
-      "schedule": "月曜 11:00"
+      "schedule": "月曜 11:00",
+      "retired": true
     },
     {
       "id": "studio-weekly",
       "label": "スタジオ運用レポート",
-      "schedule": "月曜 12:00"
+      "schedule": "月曜 12:00",
+      "stale_hours": 192
     },
     {
       "id": "ai-weekly",
       "label": "AI事業 週次",
-      "schedule": "火曜 9:00"
+      "schedule": "火曜 9:00",
+      "retired": true
     },
     {
       "id": "youtube-live",
       "label": "YouTubeライブ動画処理",
-      "schedule": "木曜 9〜15時"
+      "schedule": "木曜 9〜15時",
+      "stale_hours": 192
     },
     {
       "id": "keiri-kickoff",
       "label": "経理キックオフ",
-      "schedule": "毎月1日 9:00"
+      "schedule": "毎月1日 9:00",
+      "stale_hours": 800
     },
     {
       "id": "monthly-reports",
       "label": "月次レポート一括（7社）",
-      "schedule": "毎月3日 9:00"
+      "schedule": "毎月3日 9:00",
+      "stale_hours": 800
     }
   ],
   "_resident_comment": "check.type=process はコマンドラインの部分一致でプロセスを探す。check.type=log は AREA51 のログの最終行の時刻を見て stale_minutes を超えていたら停止の疑いとする。判定はビルド時点の時刻が基準",
@@ -143,5 +162,6 @@
       "label": "Handleループ（週次オーガニック）",
       "url": "https://docs.google.com/spreadsheets/d/1nwEVuPoILDxXRwHimsOFwMnhuNwWKhLn98lugJwh6UA/edit?gid=1704484867#gid=1704484867"
     }
-  ]
+  ],
+  "_stale_comment": "stale_hours: この時間だけ実行記録が無ければ「そもそも動いていない」としてDiscordへ通知する。想定間隔の約3倍。retired=true のジョブは監視対象外。OS起動から2時間未満、または全ジョブが1時間以上動いていない（＝PCが寝ていた）場合は stale 判定そのものを行わない"
 }

@@ -78,13 +78,22 @@ def parse_external_log(path: Path, date_re: re.Pattern) -> dict | None:
     mm = m.group(3) if m.lastindex and m.lastindex >= 3 else "00"
     start = f"{m.group(1)}T{hh}:{mm}:00"
     exit_code = 0  # 外部ジョブは「ログが残った＝実行された」を成功とみなす
+    warn = ""
     try:
         body = path.read_text(encoding="utf-8-sig", errors="replace")
         if CRASH_RE.search(body):
             exit_code = 1
+        # 外部ジョブ（Handle系）も行頭の警告を拾う。exit フッターが無いので
+        # クラッシュ以外の失敗はこれでしか気づけない
+        w = DEGRADED_RE.search(body)
+        if w:
+            warn = body[w.start():].splitlines()[0].strip()[:200]
     except OSError:
         pass
-    return {"start": start, "exit": exit_code, "minutes": None}
+    rec = {"start": start, "exit": exit_code, "minutes": None}
+    if warn:
+        rec["warn"] = warn
+    return rec
 
 
 def parse_log(path: Path) -> dict | None:
@@ -251,14 +260,36 @@ def check_health(entry: dict, last_seen: dict, now: datetime) -> dict:
     return {"status": "unknown", "detail": ""}
 
 
-def job_health(runs: list) -> dict:
+def boot_time() -> datetime | None:
+    """OSの最終起動時刻。長時間の停止直後に全ジョブが一斉に鳴るのを防ぐ判定に使う。"""
+    ps = "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToString('o')"
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+            capture_output=True, text=True, timeout=60,
+        )
+        return datetime.fromisoformat(out.stdout.strip()).replace(tzinfo=None)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+
+
+def job_health(runs: list, jobs: list, now: datetime) -> dict:
     """ジョブごとの現在の状態を {job_id: (status, detail)} で返す。
 
     判断に使うのは「最後に終了した実行」1件だけ。exit が None のものは実行中なので
     無視する（実行中を失敗と誤判定しないため）。
-        exit != 0        → ng
-        exit == 0 + 警告 → degraded（動いているのに中で失敗している＝今回の見逃し）
-        それ以外         → ok
+        まったく動いていない → stale（schedule.json の stale_hours を超過）
+        exit != 0            → ng
+        exit == 0 + 警告     → degraded（動いているのに中で失敗している）
+        それ以外             → ok
+
+    stale の誤爆対策（2つ同時に満たしたときだけ stale を判定する）:
+      1. OS起動から2時間以上経っている（起動直後の追いつき待ちを鳴らさない）
+      2. どれか1つでも直近1時間に動いている
+         → 「全ジョブが止まっている」＝PCが寝ていた/落ちていただけなので黙る。
+           逆に他が動いているのにこれだけ動いていないなら、タスクの無効化や
+           削除が疑われるので鳴らす（2026-08-11に32時間停止した実績があるため
+           この区別は必須）。
     """
     latest: dict[str, dict] = {}
     for r in runs:
@@ -268,10 +299,45 @@ def job_health(runs: list) -> dict:
         if cur is None or r["start"] > cur["start"]:
             latest[r["job"]] = r
 
+    def as_dt(s: str) -> datetime | None:
+        try:
+            return datetime.fromisoformat(s)
+        except ValueError:
+            return None
+
+    newest = max((d for d in (as_dt(r["start"]) for r in latest.values()) if d),
+                 default=None)
+    bt = boot_time()
+    check_stale = (
+        newest is not None
+        and (now - newest).total_seconds() < 3600
+        and (bt is None or (now - bt).total_seconds() >= 7200)
+    )
+
     out = {}
-    for job, r in latest.items():
+    for j in jobs:
+        job = j["id"]
+        if j.get("retired"):
+            continue                      # 意図的に止めたジョブは監視しない
+        r = latest.get(job)
+        limit = j.get("stale_hours")
+
+        if r is None:
+            if check_stale and limit:
+                out[job] = ("stale", "実行の記録がありません")
+            continue
+
         when = r["start"][5:16].replace("T", " ")
-        if r["exit"] != 0:
+        age_h = None
+        d = as_dt(r["start"])
+        if d:
+            age_h = (now - d).total_seconds() / 3600
+
+        if check_stale and limit and age_h is not None and age_h > limit:
+            out[job] = ("stale",
+                        f"{int(age_h)}時間 動いていません"
+                        f"（想定{limit}時間以内／最後の実行 {when}）")
+        elif r["exit"] != 0:
             out[job] = ("ng", f"{when} に exit={r['exit']} で失敗")
         elif r.get("warn"):
             out[job] = ("degraded", f"{when} 正常終了だがログに警告: {r['warn']}")
@@ -311,7 +377,12 @@ def notify_health_changes(current: dict) -> list:
     except (OSError, ValueError):
         previous = {}
 
-    icons = {"ok": "✅", "degraded": "⚠️", "ng": "🔴"}
+    icons = {"ok": "✅", "degraded": "⚠️", "ng": "🔴", "stale": "⏹️"}
+    words = {
+        "degraded": "動いているように見えて中で失敗しています",
+        "ng": "失敗しています",
+        "stale": "そもそも動いていません",
+    }
     lines = []
     for key, (status, label, detail) in sorted(current.items()):
         before = previous.get(key)
@@ -322,9 +393,8 @@ def notify_health_changes(current: dict) -> list:
         if status == "ok":
             lines.append(f"{icons[status]} **{label}** 復旧しました")
         else:
-            word = ("動いているように見えて中で失敗しています"
-                    if status == "degraded" else "失敗しています")
-            lines.append(f"{icons[status]} **{label}** {word}\n　{detail}")
+            lines.append(f"{icons.get(status, '❓')} **{label}** "
+                         f"{words.get(status, status)}\n　{detail}")
 
     if lines:
         post_discord("🔔 **自動化の状態が変わりました**\n\n" + "\n".join(lines)
@@ -416,9 +486,8 @@ def main() -> int:
     # ページを開かなくても失敗に気づけるようにするのが目的（改修メモ013）。
     health = {}
     labels = {j["id"]: j["label"] for j in schedule["jobs"]}
-    for job, (status, detail) in job_health(runs).items():
-        if job in labels:   # schedule.json に載せていないジョブは対象外
-            health[f"job:{job}"] = (status, labels[job], detail)
+    for job, (status, detail) in job_health(runs, schedule["jobs"], now).items():
+        health[f"job:{job}"] = (status, labels[job], detail)
     for r in resident:
         if r.get("status") in ("ok", "ng"):
             health[f"resident:{r['id']}"] = (r["status"], r["label"], r.get("detail", ""))
