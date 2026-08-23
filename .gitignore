@@ -1,3 +1,4 @@
 data.json
 .password
 __pycache__/
+.health_state.json

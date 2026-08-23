@@ -14,6 +14,7 @@ import os
 import re
 import subprocess
 import sys
+import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -22,7 +23,20 @@ LOGS = Path(r"E:\2026ALL\scheduler\logs")
 KEEP_DAYS = 60
 PBKDF2_ITER = 200_000
 
+# 状態変化の通知先（scheduler の webhook 設定を借りる）と、前回状態の記録
+SCHED_CONFIG = Path(r"E:\2026ALL\scheduler\config.json")
+STATE_FILE = BASE / ".health_state.json"
+
 FOOTER_RE = re.compile(r"終了 .* \(exit=(-?\d+), ([\d.]+)分\)")
+
+# exit=0 でも「中で失敗している」ジョブを拾う。
+# 行頭のログレベルだけを見る（レポート本文の "errors=1" 等を誤検知しないため。
+# 全16ジョブの最新ログで誤検知0件・故障中の受信箱ログは検知することを確認済み）。
+# 2026-08-23: 受信箱が exit=0 のまま797サイクル失敗し続け、ダッシュボードは
+# 5日半ずっと緑を表示していた。終了コードだけ見ていたのが原因（改修メモ013）。
+DEGRADED_RE = re.compile(
+    r"^(?:WARN|WARNING|ERROR|FATAL)\b|^Traceback \(most recent call last\)", re.M
+)
 
 # scheduler/logs の外で動く（別スクリプト・別フォーマットの）ジョブ。
 # job_id -> (ログフォルダ, ファイル名の日時正規表現)。時:分が取れなければ 00:00 扱い。
@@ -80,21 +94,29 @@ def parse_log(path: Path) -> dict | None:
     start = f"{m.group(1)}T{m.group(2)}:{m.group(3)}:{m.group(4)}"
     exit_code = None
     minutes = None
+    warn = ""
     try:
         # 末尾数行から終了行を探す（utf-8-sig: BOM対応）
-        tail = path.read_text(encoding="utf-8-sig", errors="replace").splitlines()[-5:]
-        for line in tail:
+        body = path.read_text(encoding="utf-8-sig", errors="replace")
+        for line in body.splitlines()[-5:]:
             f = FOOTER_RE.search(line)
             if f:
                 exit_code = int(f.group(1))
                 minutes = float(f.group(2))
+        # exit=0 でも中で失敗しているものを拾う。最初の1行だけ持つ（通知に載せる用）
+        w = DEGRADED_RE.search(body)
+        if w:
+            warn = body[w.start():].splitlines()[0].strip()[:200]
     except OSError:
         pass
-    return {
+    rec = {
         "start": start,
         "exit": exit_code,   # None = 実行中 or 異常終了でフッター無し
         "minutes": minutes,
     }
+    if warn:
+        rec["warn"] = warn   # 警告がある実行だけキーを持つ（data.enc.json を太らせない）
+    return rec
 
 
 def parse_area51_day(path: Path, line_re: re.Pattern) -> dict | None:
@@ -229,6 +251,95 @@ def check_health(entry: dict, last_seen: dict, now: datetime) -> dict:
     return {"status": "unknown", "detail": ""}
 
 
+def job_health(runs: list) -> dict:
+    """ジョブごとの現在の状態を {job_id: (status, detail)} で返す。
+
+    判断に使うのは「最後に終了した実行」1件だけ。exit が None のものは実行中なので
+    無視する（実行中を失敗と誤判定しないため）。
+        exit != 0        → ng
+        exit == 0 + 警告 → degraded（動いているのに中で失敗している＝今回の見逃し）
+        それ以外         → ok
+    """
+    latest: dict[str, dict] = {}
+    for r in runs:
+        if r.get("exit") is None:
+            continue
+        cur = latest.get(r["job"])
+        if cur is None or r["start"] > cur["start"]:
+            latest[r["job"]] = r
+
+    out = {}
+    for job, r in latest.items():
+        when = r["start"][5:16].replace("T", " ")
+        if r["exit"] != 0:
+            out[job] = ("ng", f"{when} に exit={r['exit']} で失敗")
+        elif r.get("warn"):
+            out[job] = ("degraded", f"{when} 正常終了だがログに警告: {r['warn']}")
+        else:
+            out[job] = ("ok", "")
+    return out
+
+
+def post_discord(content: str) -> None:
+    """scheduler の logs チャンネルへ投げる。User-Agent を付けないとDiscordが403を返す。"""
+    try:
+        cfg = json.loads(SCHED_CONFIG.read_text(encoding="utf-8-sig"))
+        url = ((cfg.get("discord_webhooks") or {}).get("logs")
+               or cfg.get("discord_webhook_url") or "").strip()
+        if not url:
+            return
+        req = urllib.request.Request(
+            url,
+            json.dumps({"content": content[:1900]}).encode("utf-8"),
+            {"Content-Type": "application/json", "User-Agent": "oh26-dashboard/1.0"},
+        )
+        urllib.request.urlopen(req, timeout=20).read()
+    except Exception as e:  # 通知の失敗でビルドを落とさない
+        print(f"WARN 状態変化の通知に失敗: {e}")
+
+
+def notify_health_changes(current: dict) -> list:
+    """前回ビルドから状態が変わったものだけをDiscordへ1回通知する。戻り値: 通知した行。
+
+    静かなときは完全に無音。壊れた瞬間と直った瞬間だけ鳴らす設計。
+    （2026-08-23: 受信箱は exit=0 で緑のまま5日半、ブリッジは赤いチップが7日間
+     ページ上に座っていただけで気づかれなかった。ページを見に行かないと分からない
+     監視は機能しない＝変化したときだけ向こうから来る形にする。改修メモ013）
+    """
+    try:
+        previous = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        previous = {}
+
+    icons = {"ok": "✅", "degraded": "⚠️", "ng": "🔴"}
+    lines = []
+    for key, (status, label, detail) in sorted(current.items()):
+        before = previous.get(key)
+        if before == status:
+            continue                      # 変化なし＝無音
+        if before is None and status == "ok":
+            continue                      # 初回に正常なものは黙る
+        if status == "ok":
+            lines.append(f"{icons[status]} **{label}** 復旧しました")
+        else:
+            word = ("動いているように見えて中で失敗しています"
+                    if status == "degraded" else "失敗しています")
+            lines.append(f"{icons[status]} **{label}** {word}\n　{detail}")
+
+    if lines:
+        post_discord("🔔 **自動化の状態が変わりました**\n\n" + "\n".join(lines)
+                     + "\n\n詳細: https://haruyo.github.io/oh26-dashboard/")
+
+    try:
+        STATE_FILE.write_text(
+            json.dumps({k: v[0] for k, v in current.items()},
+                       ensure_ascii=False, indent=1),
+            encoding="utf-8")
+    except OSError as e:
+        print(f"WARN 状態ファイルの保存に失敗: {e}")
+    return lines
+
+
 def main() -> int:
     schedule = json.loads((BASE / "schedule.json").read_text(encoding="utf-8-sig"))
     now = datetime.now()
@@ -301,9 +412,22 @@ def main() -> int:
         "data": base64.b64encode(ciphertext).decode(),
     }
     (BASE / "data.enc.json").write_text(json.dumps(enc), encoding="utf-8")
-    ng = [r["label"] for r in resident if r.get("status") == "ng"]
+    # 現在の状態（ジョブ＋常駐）をまとめ、前回から変わったものだけDiscordへ通知する。
+    # ページを開かなくても失敗に気づけるようにするのが目的（改修メモ013）。
+    health = {}
+    labels = {j["id"]: j["label"] for j in schedule["jobs"]}
+    for job, (status, detail) in job_health(runs).items():
+        if job in labels:   # schedule.json に載せていないジョブは対象外
+            health[f"job:{job}"] = (status, labels[job], detail)
+    for r in resident:
+        if r.get("status") in ("ok", "ng"):
+            health[f"resident:{r['id']}"] = (r["status"], r["label"], r.get("detail", ""))
+    changed = notify_health_changes(health)
+
+    bad = [f"{v[1]}({v[0]})" for v in health.values() if v[0] != "ok"]
     print(f"data.enc.json 更新: {len(runs)} runs（暗号化済み）"
-          + (f" ／ 要確認: {', '.join(ng)}" if ng else ""))
+          + (f" ／ 要確認: {', '.join(bad)}" if bad else "")
+          + (f" ／ 状態変化{len(changed)}件をDiscordへ通知" if changed else ""))
     return 0
 
 
