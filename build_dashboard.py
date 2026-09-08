@@ -46,7 +46,7 @@ EXTRA_LOG_DIRS = {
         re.compile(r"run-(\d{4}-\d{2}-\d{2})_(\d{2})(\d{2})"),
     ),
     "handle-monitor": (
-        Path(r"C:\Users\be\Desktop\handle-260502\logs"),
+        Path(r"E:\handle-260502\logs"),
         re.compile(r"weekly_(\d{4}-\d{2}-\d{2})"),
     ),
 }
@@ -228,6 +228,11 @@ def check_health(entry: dict, last_seen: dict, now: datetime) -> dict:
     判定はビルド時刻を基準にする。ページを開いた時刻と比べると、ダッシュボードの
     push が数時間おきなので常に「古い」と出てしまい、赤が意味を持たなくなるため。
     """
+    if entry.get("retired"):
+        # 意図的に運用を終えた常駐は監視しない（jobs 側の retired と同じ扱い）。
+        # status を ok/ng 以外にしておけば notify_health_changes へも上がらない。
+        return {"status": "retired", "detail": entry.get("retired_note", "運用終了")}
+
     chk = entry.get("check") or {}
     kind = chk.get("type")
 
@@ -346,6 +351,22 @@ def job_health(runs: list, jobs: list, now: datetime) -> dict:
     return out
 
 
+# 投稿の終わりを示す区切り（2026-08-31 Beeさん依頼）。通知が連続すると
+# どこからどこまでが1件か分からないため、必ず投稿の最後に1本入れる。
+# 記号は全自動化で共通（PowerShell側は scheduler/run-job.ps1 の $DiscordSeparator）。
+DISCORD_SEPARATOR = "\n" + "●" * 5
+
+
+def with_separator(content: str, limit: int) -> str:
+    """本文の末尾に区切りを足す。limit を超えないよう本文側を先に詰める。"""
+    if not content:
+        return content
+    room = limit - len(DISCORD_SEPARATOR)
+    if len(content) > room:
+        content = content[: room - 1] + "…"
+    return content + DISCORD_SEPARATOR
+
+
 def post_discord(content: str) -> None:
     """scheduler の logs チャンネルへ投げる。User-Agent を付けないとDiscordが403を返す。"""
     try:
@@ -356,7 +377,7 @@ def post_discord(content: str) -> None:
             return
         req = urllib.request.Request(
             url,
-            json.dumps({"content": content[:1900]}).encode("utf-8"),
+            json.dumps({"content": with_separator(content, 1900)}).encode("utf-8"),
             {"Content-Type": "application/json", "User-Agent": "oh26-dashboard/1.0"},
         )
         urllib.request.urlopen(req, timeout=20).read()
