@@ -38,6 +38,12 @@
    "stale_hours": 26
   },
   {
+   "id": "roblox-daily",
+   "label": "Roblox人気ゲーム日次速報",
+   "schedule": "毎日 8:45",
+   "stale_hours": 26
+  },
+  {
    "id": "area51-approve",
    "label": "Area51 承認スタンプ取込",
    "schedule": "10分毎",
@@ -77,6 +83,12 @@
    "id": "handle-loop",
    "label": "Handleサイト改善ループ",
    "schedule": "月曜 10:12",
+   "stale_hours": 192
+  },
+  {
+   "id": "roblox-charts",
+   "label": "Robloxチャート週次スナップショット",
+   "schedule": "月曜 8:30",
    "stale_hours": 192
   },
   {
